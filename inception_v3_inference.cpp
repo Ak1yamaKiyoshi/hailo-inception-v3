@@ -1,4 +1,5 @@
 #include "hailo/hailort.hpp"
+#include "common/hailo_objects.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -8,6 +9,7 @@
 #include <string>
 #include <algorithm>
 #include <cassert>
+
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
@@ -123,28 +125,28 @@ std::string info_to_str(T &stream)
 template <typename T>
 hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path)
 {
-    std::cout << "Write: Starting write process" << std::endl;
+    //std::cout << "Write: Starting write process" << std::endl;
     
     if (input.empty() || image_path.empty()) {
         std::cerr << "Write: Invalid input parameters" << std::endl;
         return HAILO_INVALID_ARGUMENT;
     }
 
-    std::cout << "Write: Loading image from " << image_path << std::endl;
+    //std::cout << "Write: Loading image from " << image_path << std::endl;
     auto rgb_frame = cv::imread(image_path, cv::IMREAD_COLOR);
     if (rgb_frame.empty()) {
         std::cerr << "Write: Failed to load image" << std::endl;
         return HAILO_INVALID_ARGUMENT;
     }
     
-    std::cout << "Write: Converting image to RGB" << std::endl;
+    //std::cout << "Write: Converting image to RGB" << std::endl;
     cv::cvtColor(rgb_frame, rgb_frame, cv::COLOR_BGR2RGB);
 
-    std::cout << "Write: Resizing image to " << WIDTH << "x" << HEIGHT << std::endl;
+    //std::cout << "Write: Resizing image to " << WIDTH << "x" << HEIGHT << std::endl;
     cv::resize(rgb_frame, rgb_frame, cv::Size(WIDTH, HEIGHT), 0, 0, cv::INTER_AREA);
     
-    std::cout << "Write: Image size after resize: " << rgb_frame.cols << "x" << rgb_frame.rows << std::endl;
-    std::cout << "Write: Image channels: " << rgb_frame.channels() << std::endl;
+    //std::cout << "Write: Image size after resize: " << rgb_frame.cols << "x" << rgb_frame.rows << std::endl;
+    //std::cout << "Write: Image channels: " << rgb_frame.channels() << std::endl;
 
     // Convert to float and normalize
     cv::Mat float_image;
@@ -158,7 +160,7 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
     size_t image_size = WIDTH * HEIGHT * 3;
     std::memcpy(input_buffer.data(), float_image.data, image_size * sizeof(float));
 
-    std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
+    //std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
     try {
         auto status = input[0].write(MemoryView(input_buffer.data(), expected_size));
         if (HAILO_SUCCESS != status) {
@@ -170,7 +172,7 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
         return HAILO_INTERNAL_FAILURE;
     }
 
-    std::cout << "Write: Write process completed successfully" << std::endl;
+    //std::cout << "Write: Write process completed successfully" << std::endl;
     return HAILO_SUCCESS;
 }
 
@@ -178,23 +180,23 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
 template <typename T>
 hailo_status read_all(OutputVStream &output, const std::vector<std::string>& classes)
 {
-    std::cout << "Read: Starting read process" << std::endl;
+    //std::cout << "Read: Starting read process" << std::endl;
     
     try {
         size_t frame_size = output.get_frame_size();
-        std::cout << "Read: Frame size: " << frame_size << std::endl;
+        //std::cout << "Read: Frame size: " << frame_size << std::endl;
         
         std::vector<T> data(frame_size / sizeof(T));
-        std::cout << "Read: Allocated buffer of size: " << data.size() << std::endl;
+        //std::cout << "Read: Allocated buffer of size: " << data.size() << std::endl;
         
-        std::cout << "Read: Reading from output vstream" << std::endl;
+        //std::cout << "Read: Reading from output vstream" << std::endl;
         auto status = output.read(MemoryView(data.data(), data.size() * sizeof(T)));
         if (status != HAILO_SUCCESS) {
             std::cerr << "Read: Failed to read from output vstream" << std::endl;
             return status;
         }
 
-        std::cout << "Read: Processing output data" << std::endl;
+        //std::cout << "Read: Processing output data" << std::endl;
         size_t class_id = static_cast<size_t>(argmax(data));
         
         if (class_id < classes.size()) {
@@ -219,7 +221,7 @@ hailo_status read_all(OutputVStream &output, const std::vector<std::string>& cla
             return HAILO_INTERNAL_FAILURE;
         }
 
-        std::cout << "Read: Read process completed successfully" << std::endl;
+        //std::cout << "Read: Read process completed successfully" << std::endl;
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
         std::cerr << "Exception in read_all function: " << e.what() << std::endl;
@@ -244,7 +246,7 @@ void print_net_banner(std::pair<std::vector<InputVStream>, std::vector<OutputVSt
 template <typename IN_T, typename OUT_T>
 hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream> &outputs, std::string image_path, const std::vector<std::string>& classes)
 {
-    std::cout << "Infer: Starting inference process" << std::endl;
+    //std::cout << "Infer: Starting inference process" << std::endl;
     
     if (inputs.empty() || outputs.empty() || image_path.empty() || classes.empty()) {
         std::cerr << "Infer: Invalid input parameters" << std::endl;
@@ -255,7 +257,7 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
     hailo_status output_status = HAILO_UNINITIALIZED;
 
     try {
-        std::cout << "Infer: Starting input thread" << std::endl;
+        //std::cout << "Infer: Starting input thread" << std::endl;
         std::thread input_thread([&inputs, &image_path, &input_status]() { 
             try {
                 input_status = write_all<IN_T>(inputs, image_path); 
@@ -265,7 +267,7 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
             }
         });
 
-        std::cout << "Infer: Starting output thread" << std::endl;
+        //std::cout << "Infer: Starting output thread" << std::endl;
         std::thread output_thread([&outputs, &classes, &output_status]() { 
             try {
                 output_status = read_all<OUT_T>(outputs[0], classes); 
@@ -275,7 +277,7 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
             }
         });
 
-        std::cout << "Infer: Waiting for threads to complete" << std::endl;
+        //std::cout << "Infer: Waiting for threads to complete" << std::endl;
         input_thread.join();
         output_thread.join();
 
@@ -284,17 +286,56 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
             return HAILO_INTERNAL_FAILURE;
         }
 
-        std::cout << "Infer: Inference finished successfully" << std::endl;
+        //std::cout << "Infer: Inference finished successfully" << std::endl;
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
         std::cerr << "Exception in infer function: " << e.what() << std::endl;
         return HAILO_INTERNAL_FAILURE;
     }
 }
+
+
+HailoROIPtr inception_v3(const cv::Mat& image, const std::vector<std::string>& classes, 
+                         std::vector<InputVStream>& inputs, std::vector<OutputVStream>& outputs)
+{
+    HailoROIPtr roi = std::make_shared<HailoROI>(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
+
+    cv::Mat preprocessed_image;
+    cv::resize(image, preprocessed_image, cv::Size(299, 299));
+    preprocessed_image.convertTo(preprocessed_image, CV_32FC3, 1.0/255.0);
+
+    auto status = inputs[0].write(MemoryView(preprocessed_image.data, preprocessed_image.total() * preprocessed_image.elemSize()));
+    if (HAILO_SUCCESS != status) {
+        std::cerr << "Failed to write to input vstream" << std::endl;
+        return roi;
+    }
+
+    std::vector<float> output_data(outputs[0].get_frame_size() / sizeof(float));
+    status = outputs[0].read(MemoryView(output_data.data(), output_data.size() * sizeof(float)));
+    if (HAILO_SUCCESS != status) {
+        std::cerr << "Failed to read from output vstream" << std::endl;
+        return roi;
+    }
+
+    auto max_it = std::max_element(output_data.begin(), output_data.end());
+    int class_id = std::distance(output_data.begin(), max_it);
+    float confidence = *max_it;
+
+    HailoDetectionPtr detection = std::make_shared<HailoDetection>(
+        HailoBBox(0.0f, 0.0f, 1.0f, 1.0f), 
+        classes[class_id],
+        confidence
+    );
+
+    roi->add_object(detection);
+
+    return roi;
+}
+
 int main(int argc, char**argv)
 {
     try {
-        std::cout << "Step 1: Parsing command line arguments" << std::endl;
+        //std::cout << "Step 1: Parsing command line arguments" << std::endl;
         std::string hef_file = getCmdOption(argc, argv, "-hef=");
         std::string image_path = getCmdOption(argc, argv, "-path=");
         
@@ -306,28 +347,28 @@ int main(int argc, char**argv)
         std::cout << "-I- image path: " << image_path << std::endl;
         std::cout << "-I- hef: " << hef_file << std::endl;
 
-        std::cout << "Step 2: Scanning for PCIe devices" << std::endl;
+        //std::cout << "Step 2: Scanning for PCIe devices" << std::endl;
         auto all_devices = Device::scan_pcie();
         if (all_devices->empty()) {
             std::cerr << "Error: No PCIe devices found" << std::endl;
             return HAILO_INVALID_OPERATION;
         }
 
-        std::cout << "Step 3: Creating PCIe device" << std::endl;
+        //std::cout << "Step 3: Creating PCIe device" << std::endl;
         auto device = Device::create_pcie(all_devices.value()[0]);
         if (!device) {
             std::cerr << "Error: Failed to create PCIe device" << std::endl;
             return device.status();
         }
 
-        std::cout << "Step 4: Configuring network group" << std::endl;
+        //std::cout << "Step 4: Configuring network group" << std::endl;
         auto network_group = configure_network_group(*device.value(), hef_file);
         if (!network_group) {
             std::cerr << "Error: Failed to configure network group" << std::endl;
             return network_group.status();
         }
         
-        std::cout << "Step 5: Creating vstream params" << std::endl;
+        //std::cout << "Step 5: Creating vstream params" << std::endl;
         auto input_vstream_params = network_group.value()->make_input_vstream_params(true, HAILO_FORMAT_TYPE_FLOAT32, HAILO_DEFAULT_VSTREAM_TIMEOUT_MS, HAILO_DEFAULT_VSTREAM_QUEUE_SIZE);
         auto output_vstream_params = network_group.value()->make_output_vstream_params(false, HAILO_FORMAT_TYPE_FLOAT32, HAILO_DEFAULT_VSTREAM_TIMEOUT_MS, HAILO_DEFAULT_VSTREAM_QUEUE_SIZE);
         
@@ -336,7 +377,7 @@ int main(int argc, char**argv)
             return HAILO_INVALID_OPERATION;
         }
 
-        std::cout << "Step 6: Creating input and output vstreams" << std::endl;
+        //std::cout << "Step 6: Creating input and output vstreams" << std::endl;
         auto input_vstreams = VStreamsBuilder::create_input_vstreams(*network_group.value(), input_vstream_params.value());
         auto output_vstreams = VStreamsBuilder::create_output_vstreams(*network_group.value(), output_vstream_params.value());
         if (!input_vstreams || !output_vstreams) {
@@ -345,24 +386,24 @@ int main(int argc, char**argv)
         }
         auto vstreams = std::make_pair(input_vstreams.release(), output_vstreams.release());
 
-        std::cout << "Step 7: Printing network banner" << std::endl;
+        //std::cout << "Step 7: Printing network banner" << std::endl;
         print_net_banner(vstreams);
 
-        std::cout << "Step 8: Activating network group" << std::endl;
+        //std::cout << "Step 8: Activating network group" << std::endl;
         auto activated_network_group = network_group.value()->activate();
         if (!activated_network_group) {
             std::cerr << "Error: Failed to activate network group" << std::endl;
             return activated_network_group.status();
         }
 
-        std::cout << "Step 9: Loading ImageNet classes" << std::endl;
+        //std::cout << "Step 9: Loading ImageNet classes" << std::endl;
         std::vector<std::string> classes = load_imagenet_classes("imagenet_classes.txt");
         if (classes.empty()) {
             std::cerr << "Error: Failed to load ImageNet classes" << std::endl;
             return HAILO_INVALID_OPERATION;
         }
         
-        std::cout << "Step 10: Running inference" << std::endl;
+        //std::cout << "Step 10: Running inference" << std::endl;
         auto status = infer<float, float>(vstreams.first, vstreams.second, image_path, classes);
         //auto status = infer<float32_t, float32_t>(vstreams.first, vstreams.second, image_path, classes);
         if (HAILO_SUCCESS != status) {
@@ -370,10 +411,10 @@ int main(int argc, char**argv)
             return status;
         }
 
-        std::cout << "Program completed successfully" << std::endl;
+        //std::cout << "Program completed successfully" << std::endl;
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
-        std::cerr << "Exception in main function: " << e.what() << std::endl;
+        //std::cerr << "Exception in main function: " << e.what() << std::endl;
         return HAILO_INTERNAL_FAILURE;
     }
 }
