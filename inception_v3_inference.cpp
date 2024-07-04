@@ -1,5 +1,4 @@
 #include "hailo/hailort.hpp"
-#include "common/hailo_objects.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -13,6 +12,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 constexpr int WIDTH = 299;
 constexpr int HEIGHT = 299;
@@ -178,56 +178,55 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
 
 
 template <typename T>
-hailo_status read_all(OutputVStream &output, const std::vector<std::string>& classes)
+hailo_status read_all(OutputVStream &output, const std::vector<std::string>& classes, cv::Mat& frame)
 {
-    //std::cout << "Read: Starting read process" << std::endl;
-    
     try {
         size_t frame_size = output.get_frame_size();
-        //std::cout << "Read: Frame size: " << frame_size << std::endl;
-        
         std::vector<T> data(frame_size / sizeof(T));
-        //std::cout << "Read: Allocated buffer of size: " << data.size() << std::endl;
         
-        //std::cout << "Read: Reading from output vstream" << std::endl;
         auto status = output.read(MemoryView(data.data(), data.size() * sizeof(T)));
         if (status != HAILO_SUCCESS) {
             std::cerr << "Read: Failed to read from output vstream" << std::endl;
             return status;
         }
 
-        //std::cout << "Read: Processing output data" << std::endl;
-        size_t class_id = static_cast<size_t>(argmax(data));
+        // Find the class with highest probability
+        auto max_it = std::max_element(data.begin(), data.end());
+        size_t class_id = std::distance(data.begin(), max_it);
+        float confidence = *max_it;
         
         if (class_id < classes.size()) {
-            std::cout << "Predicted class: " << classes[class_id] << " (ID: " << class_id << ")" << std::endl;
+            // Prepare the text to be drawn
+            std::string label = classes[class_id] + " (" + std::to_string(confidence) + ")";
             
-            // Print top 5 predictions
-            std::vector<std::pair<float, size_t>> top_predictions;
-            for (size_t i = 0; i < data.size(); ++i) {
-                top_predictions.push_back({data[i], i});
-            }
-            std::partial_sort(top_predictions.begin(), top_predictions.begin() + std::min(5ul, top_predictions.size()), top_predictions.end(),
-                              [](const auto& a, const auto& b) { return a.first > b.first; });
+            // Draw the text on the frame
+            int font_face = cv::FONT_HERSHEY_SIMPLEX;
+            double font_scale = 0.7;
+            int thickness = 2;
+            int baseline = 0;
+            cv::Size text_size = cv::getTextSize(label, font_face, font_scale, thickness, &baseline);
             
-            std::cout << "Top 5 predictions:" << std::endl;
-            for (size_t i = 0; i < std::min(5ul, top_predictions.size()); ++i) {
-                size_t id = top_predictions[i].second;
-                float prob = top_predictions[i].first;
-                std::cout << classes[id] << " (ID: " << id << "): " << prob << std::endl;
-            }
+            cv::Point text_org(10, text_size.height + 10);
+            cv::rectangle(frame, text_org + cv::Point(0, baseline),
+                          text_org + cv::Point(text_size.width, -text_size.height),
+                          cv::Scalar(0, 0, 0), cv::FILLED);
+            cv::putText(frame, label, text_org, font_face, font_scale,
+                        cv::Scalar(255, 255, 255), thickness, cv::LINE_AA);
+            
+            std::cout << "Predicted class: " << classes[class_id] << " (ID: " << class_id << "), Confidence: " << confidence << std::endl;
         } else {
             std::cerr << "Read: Invalid class ID predicted: " << class_id << std::endl;
             return HAILO_INTERNAL_FAILURE;
         }
 
-        //std::cout << "Read: Read process completed successfully" << std::endl;
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
         std::cerr << "Exception in read_all function: " << e.what() << std::endl;
         return HAILO_INTERNAL_FAILURE;
     }
 }
+
+
 
 void print_net_banner(std::pair<std::vector<InputVStream>, std::vector<OutputVStream>> &vstreams) {
     std::cout << "-I---------------------------------------------------------------------" << std::endl;
@@ -241,13 +240,9 @@ void print_net_banner(std::pair<std::vector<InputVStream>, std::vector<OutputVSt
     std::cout << "-I---------------------------------------------------------------------" << std::endl;
 }
 
-
-
 template <typename IN_T, typename OUT_T>
 hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream> &outputs, std::string image_path, const std::vector<std::string>& classes)
 {
-    //std::cout << "Infer: Starting inference process" << std::endl;
-    
     if (inputs.empty() || outputs.empty() || image_path.empty() || classes.empty()) {
         std::cerr << "Infer: Invalid input parameters" << std::endl;
         return HAILO_INVALID_ARGUMENT;
@@ -257,7 +252,12 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
     hailo_status output_status = HAILO_UNINITIALIZED;
 
     try {
-        //std::cout << "Infer: Starting input thread" << std::endl;
+        cv::Mat frame = cv::imread(image_path);
+        if (frame.empty()) {
+            std::cerr << "Failed to read image: " << image_path << std::endl;
+            return HAILO_INVALID_ARGUMENT;
+        }
+
         std::thread input_thread([&inputs, &image_path, &input_status]() { 
             try {
                 input_status = write_all<IN_T>(inputs, image_path); 
@@ -267,17 +267,15 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
             }
         });
 
-        //std::cout << "Infer: Starting output thread" << std::endl;
-        std::thread output_thread([&outputs, &classes, &output_status]() { 
+        std::thread output_thread([&outputs, &classes, &output_status, &frame]() { 
             try {
-                output_status = read_all<OUT_T>(outputs[0], classes); 
+                output_status = read_all<OUT_T>(outputs[0], classes, frame); 
             } catch (const std::exception& e) {
                 std::cerr << "Exception in output thread: " << e.what() << std::endl;
                 output_status = HAILO_INTERNAL_FAILURE;
             }
         });
 
-        //std::cout << "Infer: Waiting for threads to complete" << std::endl;
         input_thread.join();
         output_thread.join();
 
@@ -286,7 +284,10 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
             return HAILO_INTERNAL_FAILURE;
         }
 
-        //std::cout << "Infer: Inference finished successfully" << std::endl;
+        // Save the processed image
+        cv::imwrite("processed_" + image_path, frame);
+        std::cout << "Processed image saved as: processed_" << image_path << std::endl;
+
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
         std::cerr << "Exception in infer function: " << e.what() << std::endl;
@@ -294,43 +295,6 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
     }
 }
 
-
-HailoROIPtr inception_v3(const cv::Mat& image, const std::vector<std::string>& classes, 
-                         std::vector<InputVStream>& inputs, std::vector<OutputVStream>& outputs)
-{
-    HailoROIPtr roi = std::make_shared<HailoROI>(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
-
-    cv::Mat preprocessed_image;
-    cv::resize(image, preprocessed_image, cv::Size(299, 299));
-    preprocessed_image.convertTo(preprocessed_image, CV_32FC3, 1.0/255.0);
-
-    auto status = inputs[0].write(MemoryView(preprocessed_image.data, preprocessed_image.total() * preprocessed_image.elemSize()));
-    if (HAILO_SUCCESS != status) {
-        std::cerr << "Failed to write to input vstream" << std::endl;
-        return roi;
-    }
-
-    std::vector<float> output_data(outputs[0].get_frame_size() / sizeof(float));
-    status = outputs[0].read(MemoryView(output_data.data(), output_data.size() * sizeof(float)));
-    if (HAILO_SUCCESS != status) {
-        std::cerr << "Failed to read from output vstream" << std::endl;
-        return roi;
-    }
-
-    auto max_it = std::max_element(output_data.begin(), output_data.end());
-    int class_id = std::distance(output_data.begin(), max_it);
-    float confidence = *max_it;
-
-    HailoDetectionPtr detection = std::make_shared<HailoDetection>(
-        HailoBBox(0.0f, 0.0f, 1.0f, 1.0f), 
-        classes[class_id],
-        confidence
-    );
-
-    roi->add_object(detection);
-
-    return roi;
-}
 
 int main(int argc, char**argv)
 {
