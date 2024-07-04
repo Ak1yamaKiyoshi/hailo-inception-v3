@@ -4,6 +4,7 @@ project(inception_v3_inference)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_VERBOSE_MAKEFILE ON)  # Add this line for verbose output
 
 find_package(Threads REQUIRED)
 find_package(OpenCV REQUIRED)

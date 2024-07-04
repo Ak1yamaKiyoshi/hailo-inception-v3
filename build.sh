@@ -12,11 +12,18 @@ cd build
 # Configure with CMake
 cmake ..
 
-# Build the project
-cmake --build .
+# Build the project and show full output
+cmake --build . -- VERBOSE=1
 
-# Copy the shared library to the parent directory
+# Check if the build was successful
+if [ $? -ne 0 ]; then
+    echo "Build failed. Please check the error messages above."
+    exit 1
+fi
+
+# Copy the shared library and executable to the parent directory
 cp libinception_v3_inference.so ..
+cp inception_v3_inference ..
 
 # Return to the original directory
 cd ..
@@ -26,4 +33,4 @@ if [[ -f "hailort.log" ]]; then
     rm hailort.log
 fi
 
-echo "Build complete. Shared library is now in the current directory."
+echo "Build complete. Shared library and executable are now in the current directory."
