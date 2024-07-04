@@ -116,6 +116,9 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
 
     return HAILO_SUCCESS;
 }
+
+
+
 template <typename T>
 hailo_status read_all(OutputVStream &output, const std::vector<std::string>& classes)
 {
@@ -129,22 +132,22 @@ hailo_status read_all(OutputVStream &output, const std::vector<std::string>& cla
         }
 
         // Here's where the prediction is made
-        int class_id = argmax(data);
+        size_t class_id = static_cast<size_t>(argmax(data));
         
-        if (class_id >= 0 && class_id < classes.size()) {
+        if (class_id < classes.size()) {
             std::cout << "Predicted class: " << classes[class_id] << " (ID: " << class_id << ")" << std::endl;
             
             // Optional: Print top 5 predictions
-            std::vector<std::pair<float, int>> top_predictions;
-            for (int i = 0; i < data.size(); ++i) {
+            std::vector<std::pair<float, size_t>> top_predictions;
+            for (size_t i = 0; i < data.size(); ++i) {
                 top_predictions.push_back({data[i], i});
             }
-            std::partial_sort(top_predictions.begin(), top_predictions.begin() + 5, top_predictions.end(),
+            std::partial_sort(top_predictions.begin(), top_predictions.begin() + std::min(5ul, top_predictions.size()), top_predictions.end(),
                               [](const auto& a, const auto& b) { return a.first > b.first; });
             
             std::cout << "Top 5 predictions:" << std::endl;
-            for (int i = 0; i < 5 && i < top_predictions.size(); ++i) {
-                int id = top_predictions[i].second;
+            for (size_t i = 0; i < std::min(5ul, top_predictions.size()); ++i) {
+                size_t id = top_predictions[i].second;
                 float prob = top_predictions[i].first;
                 std::cout << classes[id] << " (ID: " << id << "): " << prob << std::endl;
             }
@@ -159,6 +162,7 @@ hailo_status read_all(OutputVStream &output, const std::vector<std::string>& cla
         return HAILO_INTERNAL_FAILURE;
     }
 }
+
 
 void print_net_banner(std::pair<std::vector<InputVStream>, std::vector<OutputVStream>> &vstreams) {
     std::cout << "-I---------------------------------------------------------------------" << std::endl;
