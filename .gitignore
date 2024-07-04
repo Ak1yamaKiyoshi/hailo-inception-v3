@@ -1,1 +1,14 @@
-.zip
+# Ignore zip files
+*.zip
+
+# Ignore log files
+*.log
+
+# Ignore npy files
+*.npy
+
+# Ignore tiny-imagenet-200 directory
+tiny-imagenet-200/
+
+#.zip
+/build
