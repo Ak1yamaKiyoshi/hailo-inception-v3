@@ -118,6 +118,8 @@ std::string info_to_str(T &stream)
     result += ")";
     return result;
 }
+
+
 template <typename T>
 hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path)
 {
@@ -136,43 +138,29 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
     }
     
     std::cout << "Write: Converting image to RGB" << std::endl;
-    if (rgb_frame.channels() == 3)
-        cv::cvtColor(rgb_frame, rgb_frame, cv::COLOR_BGR2RGB);
+    cv::cvtColor(rgb_frame, rgb_frame, cv::COLOR_BGR2RGB);
 
-    std::cout << "Write: Image size before resize: " << rgb_frame.cols << "x" << rgb_frame.rows << std::endl;
     std::cout << "Write: Resizing image to " << WIDTH << "x" << HEIGHT << std::endl;
-    if (rgb_frame.rows != HEIGHT || rgb_frame.cols != WIDTH)
-        cv::resize(rgb_frame, rgb_frame, cv::Size(WIDTH, HEIGHT), cv::INTER_AREA);
+    cv::resize(rgb_frame, rgb_frame, cv::Size(WIDTH, HEIGHT), 0, 0, cv::INTER_AREA);
     
     std::cout << "Write: Image size after resize: " << rgb_frame.cols << "x" << rgb_frame.rows << std::endl;
     std::cout << "Write: Image channels: " << rgb_frame.channels() << std::endl;
-    std::cout << "Write: Image type: " << rgb_frame.type() << std::endl;
 
-    //// Corrected size calculation
-    //size_t expected_size = WIDTH * HEIGHT * 3 * sizeof(T);
-    size_t actual_size = rgb_frame.total() * rgb_frame.elemSize();
-    //
-    //std::cout << "Write: Expected size: " << expected_size << ", Actual size: " << actual_size << std::endl;
+    // Convert to float and normalize
+    cv::Mat float_image;
+    rgb_frame.convertTo(float_image, CV_32FC3, 1.0/255.0);
 
-    //if (expected_size != actual_size) {
-    //    std::cerr << "Write: Mismatch in expected and actual image size" << std::endl;
-    //    return HAILO_INVALID_OPERATION;
-    //}
+    // Prepare the input buffer
+    size_t expected_size = 1072812;  // As per the error message
+    std::vector<float> input_buffer(expected_size / sizeof(float));
 
-    //std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
+    // Copy the image data to the input buffer
+    size_t image_size = WIDTH * HEIGHT * 3;
+    std::memcpy(input_buffer.data(), float_image.data, image_size * sizeof(float));
+
+    std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
     try {
-        cv::Mat float_image;
-        //if (std::is_same<T, float>::value) {
-        //    std::cout << "converting to float" << std::endl;
-        //    rgb_frame.convertTo(float_image, CV_32FC3, 1.0/255.0);
-        //} else {
-        //    float_image = rgb_frame;
-        //}
-        float_image = rgb_frame;
-
-        std::cout << "Write: Skipped size check and float conversion; writing actual size: " << std::endl;
-
-        auto status = input[0].write(MemoryView(float_image.data, actual_size));
+        auto status = input[0].write(MemoryView(input_buffer.data(), expected_size));
         if (HAILO_SUCCESS != status) {
             std::cerr << "Write: Failed to write to input vstream, status: " << status << std::endl;
             return status;
@@ -375,7 +363,8 @@ int main(int argc, char**argv)
         }
         
         std::cout << "Step 10: Running inference" << std::endl;
-        auto status = infer<float32_t, float32_t>(vstreams.first, vstreams.second, image_path, classes);
+        auto status = infer<float, float>(vstreams.first, vstreams.second, image_path, classes);
+        //auto status = infer<float32_t, float32_t>(vstreams.first, vstreams.second, image_path, classes);
         if (HAILO_SUCCESS != status) {
             std::cerr << "Error: Inference failed" << std::endl;
             return status;
