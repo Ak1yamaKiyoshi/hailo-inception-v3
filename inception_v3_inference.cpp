@@ -119,46 +119,72 @@ std::string info_to_str(T &stream)
     return result;
 }
 
+
 template <typename T>
 hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path)
 {
-    auto rgb_frame = cv::imread(image_path, cv::IMREAD_COLOR);
+    std::cout << "Write: Starting write process" << std::endl;
     
+    if (input.empty() || image_path.empty()) {
+        std::cerr << "Write: Invalid input parameters" << std::endl;
+        return HAILO_INVALID_ARGUMENT;
+    }
+
+    std::cout << "Write: Loading image from " << image_path << std::endl;
+    auto rgb_frame = cv::imread(image_path, cv::IMREAD_COLOR);
+    if (rgb_frame.empty()) {
+        std::cerr << "Write: Failed to load image" << std::endl;
+        return HAILO_INVALID_ARGUMENT;
+    }
+    
+    std::cout << "Write: Converting image to RGB" << std::endl;
     if (rgb_frame.channels() == 3)
         cv::cvtColor(rgb_frame, rgb_frame, cv::COLOR_BGR2RGB);
 
+    std::cout << "Write: Resizing image to " << WIDTH << "x" << HEIGHT << std::endl;
     if (rgb_frame.rows != HEIGHT || rgb_frame.cols != WIDTH)
         cv::resize(rgb_frame, rgb_frame, cv::Size(WIDTH, HEIGHT), cv::INTER_AREA);
     
-    int factor = std::is_same<T, uint8_t>::value ? 1 : 4;  // In case we use float32_t, we have 4 bytes per component
-    auto status = input[0].write(MemoryView(rgb_frame.data, HEIGHT * WIDTH * 3 * factor)); // Writing HEIGHT * WIDTH, 3 channels of uint8
-    if (HAILO_SUCCESS != status) 
+    int factor = std::is_same<T, uint8_t>::value ? 1 : 4;
+    size_t expected_size = HEIGHT * WIDTH * 3 * factor;
+    
+    std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
+    auto status = input[0].write(MemoryView(rgb_frame.data, expected_size));
+    if (HAILO_SUCCESS != status) {
+        std::cerr << "Write: Failed to write to input vstream" << std::endl;
         return status;
+    }
 
+    std::cout << "Write: Write process completed successfully" << std::endl;
     return HAILO_SUCCESS;
 }
-
-
 
 template <typename T>
 hailo_status read_all(OutputVStream &output, const std::vector<std::string>& classes)
 {
+    std::cout << "Read: Starting read process" << std::endl;
+    
     try {
-        std::vector<T> data(output.get_frame_size() / sizeof(T));
+        size_t frame_size = output.get_frame_size();
+        std::cout << "Read: Frame size: " << frame_size << std::endl;
         
+        std::vector<T> data(frame_size / sizeof(T));
+        std::cout << "Read: Allocated buffer of size: " << data.size() << std::endl;
+        
+        std::cout << "Read: Reading from output vstream" << std::endl;
         auto status = output.read(MemoryView(data.data(), data.size() * sizeof(T)));
-        if (HAILO_SUCCESS != status) {
-            std::cerr << "Failed to read from output vstream" << std::endl;
+        if (status != HAILO_SUCCESS) {
+            std::cerr << "Read: Failed to read from output vstream" << std::endl;
             return status;
         }
 
-        // Here's where the prediction is made
+        std::cout << "Read: Processing output data" << std::endl;
         size_t class_id = static_cast<size_t>(argmax(data));
         
         if (class_id < classes.size()) {
             std::cout << "Predicted class: " << classes[class_id] << " (ID: " << class_id << ")" << std::endl;
             
-            // Optional: Print top 5 predictions
+            // Print top 5 predictions
             std::vector<std::pair<float, size_t>> top_predictions;
             for (size_t i = 0; i < data.size(); ++i) {
                 top_predictions.push_back({data[i], i});
@@ -173,17 +199,17 @@ hailo_status read_all(OutputVStream &output, const std::vector<std::string>& cla
                 std::cout << classes[id] << " (ID: " << id << "): " << prob << std::endl;
             }
         } else {
-            std::cerr << "Invalid class ID predicted: " << class_id << std::endl;
+            std::cerr << "Read: Invalid class ID predicted: " << class_id << std::endl;
             return HAILO_INTERNAL_FAILURE;
         }
 
+        std::cout << "Read: Read process completed successfully" << std::endl;
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
         std::cerr << "Exception in read_all function: " << e.what() << std::endl;
         return HAILO_INTERNAL_FAILURE;
     }
 }
-
 
 void print_net_banner(std::pair<std::vector<InputVStream>, std::vector<OutputVStream>> &vstreams) {
     std::cout << "-I---------------------------------------------------------------------" << std::endl;
