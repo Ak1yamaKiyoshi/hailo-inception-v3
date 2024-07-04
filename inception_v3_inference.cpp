@@ -202,15 +202,18 @@ void print_net_banner(std::pair<std::vector<InputVStream>, std::vector<OutputVSt
 template <typename IN_T, typename OUT_T>
 hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream> &outputs, std::string image_path, const std::vector<std::string>& classes)
 {
-    assert(!inputs.empty() && "Input vstreams vector is empty");
-    assert(!outputs.empty() && "Output vstreams vector is empty");
-    assert(!image_path.empty() && "Image path is empty");
-    assert(!classes.empty() && "Classes vector is empty");
+    std::cout << "Infer: Starting inference process" << std::endl;
+    
+    if (inputs.empty() || outputs.empty() || image_path.empty() || classes.empty()) {
+        std::cerr << "Infer: Invalid input parameters" << std::endl;
+        return HAILO_INVALID_ARGUMENT;
+    }
 
     hailo_status input_status = HAILO_UNINITIALIZED;
     hailo_status output_status = HAILO_UNINITIALIZED;
 
     try {
+        std::cout << "Infer: Starting input thread" << std::endl;
         std::thread input_thread([&inputs, &image_path, &input_status]() { 
             try {
                 input_status = write_all<IN_T>(inputs, image_path); 
@@ -220,6 +223,7 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
             }
         });
 
+        std::cout << "Infer: Starting output thread" << std::endl;
         std::thread output_thread([&outputs, &classes, &output_status]() { 
             try {
                 output_status = read_all<OUT_T>(outputs[0], classes); 
@@ -229,66 +233,101 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
             }
         });
 
+        std::cout << "Infer: Waiting for threads to complete" << std::endl;
         input_thread.join();
         output_thread.join();
 
-        assert(input_status == HAILO_SUCCESS && "Input thread failed");
-        assert(output_status == HAILO_SUCCESS && "Output thread failed");
+        if ((HAILO_SUCCESS != input_status) || (HAILO_SUCCESS != output_status)) {
+            std::cerr << "Infer: Thread execution failed. Input status: " << input_status << ", Output status: " << output_status << std::endl;
+            return HAILO_INTERNAL_FAILURE;
+        }
 
-        std::cout << "-I- Inference finished successfully" << std::endl;
+        std::cout << "Infer: Inference finished successfully" << std::endl;
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
         std::cerr << "Exception in infer function: " << e.what() << std::endl;
         return HAILO_INTERNAL_FAILURE;
     }
 }
-
-
-
 int main(int argc, char**argv)
 {
     try {
+        std::cout << "Step 1: Parsing command line arguments" << std::endl;
         std::string hef_file = getCmdOption(argc, argv, "-hef=");
         std::string image_path = getCmdOption(argc, argv, "-path=");
         
-        assert(!hef_file.empty() && "HEF file path is empty");
-        assert(!image_path.empty() && "Image path is empty");
+        if (hef_file.empty() || image_path.empty()) {
+            std::cerr << "Error: HEF file or image path is empty" << std::endl;
+            return HAILO_INVALID_ARGUMENT;
+        }
 
         std::cout << "-I- image path: " << image_path << std::endl;
         std::cout << "-I- hef: " << hef_file << std::endl;
 
+        std::cout << "Step 2: Scanning for PCIe devices" << std::endl;
         auto all_devices = Device::scan_pcie();
-        assert(!all_devices->empty() && "No PCIe devices found");
+        if (all_devices->empty()) {
+            std::cerr << "Error: No PCIe devices found" << std::endl;
+            return HAILO_INVALID_OPERATION;
+        }
 
+        std::cout << "Step 3: Creating PCIe device" << std::endl;
         auto device = Device::create_pcie(all_devices.value()[0]);
-        assert(device && "Failed to create PCIe device");
+        if (!device) {
+            std::cerr << "Error: Failed to create PCIe device" << std::endl;
+            return device.status();
+        }
 
+        std::cout << "Step 4: Configuring network group" << std::endl;
         auto network_group = configure_network_group(*device.value(), hef_file);
-        assert(network_group && "Failed to configure network group");
+        if (!network_group) {
+            std::cerr << "Error: Failed to configure network group" << std::endl;
+            return network_group.status();
+        }
         
+        std::cout << "Step 5: Creating vstream params" << std::endl;
         auto input_vstream_params = network_group.value()->make_input_vstream_params(true, HAILO_FORMAT_TYPE_FLOAT32, HAILO_DEFAULT_VSTREAM_TIMEOUT_MS, HAILO_DEFAULT_VSTREAM_QUEUE_SIZE);
         auto output_vstream_params = network_group.value()->make_output_vstream_params(false, HAILO_FORMAT_TYPE_FLOAT32, HAILO_DEFAULT_VSTREAM_TIMEOUT_MS, HAILO_DEFAULT_VSTREAM_QUEUE_SIZE);
         
-        assert(input_vstream_params && "Failed to create input vstream params");
-        assert(output_vstream_params && "Failed to create output vstream params");
+        if (!input_vstream_params || !output_vstream_params) {
+            std::cerr << "Error: Failed to create vstream params" << std::endl;
+            return HAILO_INVALID_OPERATION;
+        }
 
+        std::cout << "Step 6: Creating input and output vstreams" << std::endl;
         auto input_vstreams = VStreamsBuilder::create_input_vstreams(*network_group.value(), input_vstream_params.value());
         auto output_vstreams = VStreamsBuilder::create_output_vstreams(*network_group.value(), output_vstream_params.value());
-        assert(input_vstreams && output_vstreams && "Failed to create vstreams");
-
+        if (!input_vstreams || !output_vstreams) {
+            std::cerr << "Error: Failed to create vstreams" << std::endl;
+            return input_vstreams.status();
+        }
         auto vstreams = std::make_pair(input_vstreams.release(), output_vstreams.release());
 
+        std::cout << "Step 7: Printing network banner" << std::endl;
         print_net_banner(vstreams);
 
+        std::cout << "Step 8: Activating network group" << std::endl;
         auto activated_network_group = network_group.value()->activate();
-        assert(activated_network_group && "Failed to activate network group");
+        if (!activated_network_group) {
+            std::cerr << "Error: Failed to activate network group" << std::endl;
+            return activated_network_group.status();
+        }
 
+        std::cout << "Step 9: Loading ImageNet classes" << std::endl;
         std::vector<std::string> classes = load_imagenet_classes("imagenet_classes.txt");
-        assert(!classes.empty() && "Failed to load ImageNet classes");
+        if (classes.empty()) {
+            std::cerr << "Error: Failed to load ImageNet classes" << std::endl;
+            return HAILO_INVALID_OPERATION;
+        }
         
+        std::cout << "Step 10: Running inference" << std::endl;
         auto status = infer<float32_t, float32_t>(vstreams.first, vstreams.second, image_path, classes);
-        assert(status == HAILO_SUCCESS && "Inference failed");
+        if (HAILO_SUCCESS != status) {
+            std::cerr << "Error: Inference failed" << std::endl;
+            return status;
+        }
 
+        std::cout << "Program completed successfully" << std::endl;
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
         std::cerr << "Exception in main function: " << e.what() << std::endl;
