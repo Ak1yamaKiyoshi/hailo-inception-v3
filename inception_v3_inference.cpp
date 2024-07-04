@@ -119,7 +119,6 @@ std::string info_to_str(T &stream)
     return result;
 }
 
-
 template <typename T>
 hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path)
 {
@@ -141,24 +140,41 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
     if (rgb_frame.channels() == 3)
         cv::cvtColor(rgb_frame, rgb_frame, cv::COLOR_BGR2RGB);
 
+    std::cout << "Write: Image size before resize: " << rgb_frame.cols << "x" << rgb_frame.rows << std::endl;
     std::cout << "Write: Resizing image to " << WIDTH << "x" << HEIGHT << std::endl;
     if (rgb_frame.rows != HEIGHT || rgb_frame.cols != WIDTH)
         cv::resize(rgb_frame, rgb_frame, cv::Size(WIDTH, HEIGHT), cv::INTER_AREA);
     
+    std::cout << "Write: Image size after resize: " << rgb_frame.cols << "x" << rgb_frame.rows << std::endl;
+    std::cout << "Write: Image channels: " << rgb_frame.channels() << std::endl;
+    std::cout << "Write: Image type: " << rgb_frame.type() << std::endl;
+
     int factor = std::is_same<T, uint8_t>::value ? 1 : 4;
     size_t expected_size = HEIGHT * WIDTH * 3 * factor;
+    size_t actual_size = rgb_frame.total() * rgb_frame.elemSize();
     
+    std::cout << "Write: Expected size: " << expected_size << ", Actual size: " << actual_size << std::endl;
+
+    if (expected_size != actual_size) {
+        std::cerr << "Write: Mismatch in expected and actual image size" << std::endl;
+        return HAILO_INVALID_OPERATION;
+    }
+
     std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
-    auto status = input[0].write(MemoryView(rgb_frame.data, expected_size));
-    if (HAILO_SUCCESS != status) {
-        std::cerr << "Write: Failed to write to input vstream" << std::endl;
-        return status;
+    try {
+        auto status = input[0].write(MemoryView(rgb_frame.data, expected_size));
+        if (HAILO_SUCCESS != status) {
+            std::cerr << "Write: Failed to write to input vstream, status: " << status << std::endl;
+            return status;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Write: Exception while writing to input vstream: " << e.what() << std::endl;
+        return HAILO_INTERNAL_FAILURE;
     }
 
     std::cout << "Write: Write process completed successfully" << std::endl;
     return HAILO_SUCCESS;
 }
-
 template <typename T>
 hailo_status read_all(OutputVStream &output, const std::vector<std::string>& classes)
 {
