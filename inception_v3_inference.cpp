@@ -196,18 +196,21 @@ void print_net_banner(std::pair<std::vector<InputVStream>, std::vector<OutputVSt
         std::cout << "-I- OUT: " << info_to_str<OutputVStream>(value) << std::endl;
     std::cout << "-I---------------------------------------------------------------------" << std::endl;
 }
+
+
+
 template <typename IN_T, typename OUT_T>
 hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream> &outputs, std::string image_path, const std::vector<std::string>& classes)
 {
+    assert(!inputs.empty() && "Input vstreams vector is empty");
+    assert(!outputs.empty() && "Output vstreams vector is empty");
+    assert(!image_path.empty() && "Image path is empty");
+    assert(!classes.empty() && "Classes vector is empty");
+
     hailo_status input_status = HAILO_UNINITIALIZED;
     hailo_status output_status = HAILO_UNINITIALIZED;
 
     try {
-        assert(!inputs.empty() && "Input vstreams vector is empty");
-        assert(!outputs.empty() && "Output vstreams vector is empty");
-        assert(!image_path.empty() && "Image path is empty");
-        assert(!classes.empty() && "Classes vector is empty");
-
         std::thread input_thread([&inputs, &image_path, &input_status]() { 
             try {
                 input_status = write_all<IN_T>(inputs, image_path); 
@@ -229,10 +232,8 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
         input_thread.join();
         output_thread.join();
 
-        if ((HAILO_SUCCESS != input_status) || (HAILO_SUCCESS != output_status)) {
-            std::cerr << "Input status: " << input_status << ", Output status: " << output_status << std::endl;
-            return HAILO_INTERNAL_FAILURE;
-        }
+        assert(input_status == HAILO_SUCCESS && "Input thread failed");
+        assert(output_status == HAILO_SUCCESS && "Output thread failed");
 
         std::cout << "-I- Inference finished successfully" << std::endl;
         return HAILO_SUCCESS;
@@ -241,7 +242,6 @@ hailo_status infer(std::vector<InputVStream> &inputs, std::vector<OutputVStream>
         return HAILO_INTERNAL_FAILURE;
     }
 }
-
 
 
 
@@ -261,16 +261,10 @@ int main(int argc, char**argv)
         assert(!all_devices->empty() && "No PCIe devices found");
 
         auto device = Device::create_pcie(all_devices.value()[0]);
-        if (!device) {
-            std::cerr << "-E- Failed create_pcie " << device.status() << std::endl;
-            return device.status();
-        }
+        assert(device && "Failed to create PCIe device");
 
         auto network_group = configure_network_group(*device.value(), hef_file);
-        if (!network_group) {
-            std::cerr << "-E- Failed to configure network group " << hef_file << std::endl;
-            return network_group.status();
-        }
+        assert(network_group && "Failed to configure network group");
         
         auto input_vstream_params = network_group.value()->make_input_vstream_params(true, HAILO_FORMAT_TYPE_FLOAT32, HAILO_DEFAULT_VSTREAM_TIMEOUT_MS, HAILO_DEFAULT_VSTREAM_QUEUE_SIZE);
         auto output_vstream_params = network_group.value()->make_output_vstream_params(false, HAILO_FORMAT_TYPE_FLOAT32, HAILO_DEFAULT_VSTREAM_TIMEOUT_MS, HAILO_DEFAULT_VSTREAM_QUEUE_SIZE);
@@ -280,29 +274,20 @@ int main(int argc, char**argv)
 
         auto input_vstreams = VStreamsBuilder::create_input_vstreams(*network_group.value(), input_vstream_params.value());
         auto output_vstreams = VStreamsBuilder::create_output_vstreams(*network_group.value(), output_vstream_params.value());
-        if (!input_vstreams or !output_vstreams) {
-            std::cerr << "-E- Failed creating input: " << input_vstreams.status() << " output status:" << output_vstreams.status() << std::endl;
-            return input_vstreams.status();
-        }
+        assert(input_vstreams && output_vstreams && "Failed to create vstreams");
+
         auto vstreams = std::make_pair(input_vstreams.release(), output_vstreams.release());
 
         print_net_banner(vstreams);
 
         auto activated_network_group = network_group.value()->activate();
-        if (!activated_network_group) {
-            std::cerr << "-E- Failed activated network group " << activated_network_group.status();
-            return activated_network_group.status();
-        }
+        assert(activated_network_group && "Failed to activate network group");
 
         std::vector<std::string> classes = load_imagenet_classes("imagenet_classes.txt");
         assert(!classes.empty() && "Failed to load ImageNet classes");
         
         auto status = infer<float32_t, float32_t>(vstreams.first, vstreams.second, image_path, classes);
-
-        if (HAILO_SUCCESS != status) {
-            std::cerr << "-E- Inference failed " << status << std::endl;
-            return status;
-        }
+        assert(status == HAILO_SUCCESS && "Inference failed");
 
         return HAILO_SUCCESS;
     } catch (const std::exception& e) {
