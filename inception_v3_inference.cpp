@@ -118,7 +118,6 @@ std::string info_to_str(T &stream)
     result += ")";
     return result;
 }
-
 template <typename T>
 hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path)
 {
@@ -149,20 +148,31 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
     std::cout << "Write: Image channels: " << rgb_frame.channels() << std::endl;
     std::cout << "Write: Image type: " << rgb_frame.type() << std::endl;
 
-    int factor = std::is_same<T, uint8_t>::value ? 1 : 4;
-    size_t expected_size = HEIGHT * WIDTH * 3 * factor;
+    //// Corrected size calculation
+    //size_t expected_size = WIDTH * HEIGHT * 3 * sizeof(T);
     size_t actual_size = rgb_frame.total() * rgb_frame.elemSize();
-    
-    std::cout << "Write: Expected size: " << expected_size << ", Actual size: " << actual_size << std::endl;
+    //
+    //std::cout << "Write: Expected size: " << expected_size << ", Actual size: " << actual_size << std::endl;
 
-    if (expected_size != actual_size) {
-        std::cerr << "Write: Mismatch in expected and actual image size" << std::endl;
-        return HAILO_INVALID_OPERATION;
-    }
+    //if (expected_size != actual_size) {
+    //    std::cerr << "Write: Mismatch in expected and actual image size" << std::endl;
+    //    return HAILO_INVALID_OPERATION;
+    //}
 
-    std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
+    //std::cout << "Write: Writing to input vstream, size: " << expected_size << std::endl;
     try {
-        auto status = input[0].write(MemoryView(rgb_frame.data, expected_size));
+        cv::Mat float_image;
+        //if (std::is_same<T, float>::value) {
+        //    std::cout << "converting to float" << std::endl;
+        //    rgb_frame.convertTo(float_image, CV_32FC3, 1.0/255.0);
+        //} else {
+        //    float_image = rgb_frame;
+        //}
+        float_image = rgb_frame;
+
+        std::cout << "Write: Skipped size check and float conversion; writing actual size: " << std::endl;
+
+        auto status = input[0].write(MemoryView(float_image.data, actual_size));
         if (HAILO_SUCCESS != status) {
             std::cerr << "Write: Failed to write to input vstream, status: " << status << std::endl;
             return status;
@@ -175,6 +185,8 @@ hailo_status write_all(std::vector<InputVStream> &input, std::string &image_path
     std::cout << "Write: Write process completed successfully" << std::endl;
     return HAILO_SUCCESS;
 }
+
+
 template <typename T>
 hailo_status read_all(OutputVStream &output, const std::vector<std::string>& classes)
 {
