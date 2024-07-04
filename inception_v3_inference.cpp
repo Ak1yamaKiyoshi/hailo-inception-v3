@@ -30,18 +30,39 @@ int argmax(std::vector<T, A> const& vec) {
     return static_cast<int>(std::distance(vec.begin(), max_element(vec.begin(), vec.end())));
 }
 
-std::vector<std::string> load_imagenet_classes(const std::string& file_path) {
+std::vector<std::string> load_imagenet_classes(const std::string& file_path = "imagenet_classes.txt") {
     std::vector<std::string> classes;
     std::ifstream file(file_path);
-    std::string line;
-    while (std::getline(file, line)) {
-        size_t pos = line.find('\t');
-        if (pos != std::string::npos) {
-            classes.push_back(line.substr(pos + 1));
+    
+    if (!file.is_open()) {
+        std::cerr << "Warning: Unable to open file " << file_path << std::endl;
+        std::cerr << "Falling back to numbered classes." << std::endl;
+    } else {
+        std::string line;
+        while (std::getline(file, line)) {
+            // Trim whitespace from the beginning and end of the line
+            line.erase(0, line.find_first_not_of(" \t\n\r\f\v"));
+            line.erase(line.find_last_not_of(" \t\n\r\f\v") + 1);
+            
+            if (!line.empty()) {
+                classes.push_back(line);
+            }
         }
     }
+
+    if (classes.empty()) {
+        std::cerr << "Warning: No classes loaded from " << file_path << std::endl;
+        std::cerr << "Using numbered classes instead." << std::endl;
+        for (int i = 0; i < 1000; ++i) {  // Assuming 1000 classes for ImageNet
+            classes.push_back("Class_" + std::to_string(i));
+        }
+    } else {
+        std::cout << "Loaded " << classes.size() << " classes from " << file_path << std::endl;
+    }
+
     return classes;
 }
+
 
 std::string getCmdOption(int argc, char *argv[], const std::string &option)
 {
@@ -273,7 +294,7 @@ int main(int argc, char**argv)
             return activated_network_group.status();
         }
 
-        std::vector<std::string> classes = load_imagenet_classes("words.txt");
+        std::vector<std::string> classes = load_imagenet_classes("imagenet_classes.txt");
         assert(!classes.empty() && "Failed to load ImageNet classes");
         
         auto status = infer<float32_t, float32_t>(vstreams.first, vstreams.second, image_path, classes);
