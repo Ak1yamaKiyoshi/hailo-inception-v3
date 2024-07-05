@@ -84,7 +84,7 @@ class GStreamerInstanceSegmentationApp(GStreamerApp):
         
         # Defining own postprocessing path                                                                                    self.processing_path
         pipeline_string += f"hailonet hef-path={self.hef_path} batch-size={self.batch_size} force-writable=true ! "
-        pipeline_string += f"hailofilter function-name={self.default_network_name} so-path={self.default_postprocess_so} qos=false ! "
+        pipeline_string += f"hailofilter function-name=infer so-path={self.default_postprocess_so} qos=false ! "
         #
         
         pipeline_string += QUEUE("queue_hmuc") + " hmux.sink_1 "
