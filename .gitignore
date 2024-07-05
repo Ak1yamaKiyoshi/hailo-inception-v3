@@ -10,5 +10,10 @@
 # Ignore tiny-imagenet-200 directory
 tiny-imagenet-200/
 
+# env 
+inception-v3/
+
 #.zip
 /build
+
+__pycache__/
