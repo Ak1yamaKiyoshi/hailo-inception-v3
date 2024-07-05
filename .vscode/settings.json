@@ -56,6 +56,8 @@
         "cfenv": "cpp",
         "typeinfo": "cpp",
         "deque": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "forward_list": "cpp",
+        "unordered_set": "cpp"
     }
 }
