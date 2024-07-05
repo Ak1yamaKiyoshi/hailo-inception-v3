@@ -32,11 +32,15 @@ def get_frame_info(pad, info):
     return buffer, format, width, height
 
 
-
+i = 0
 def app_callback(pad, info, user_data):
+    global i
     buffer, format, width, height = get_frame_info(pad, info)
     if not all([buffer, format, width, height]): 
         return Gst.PadProbeReturn.OK
+
+    print(f"\r frame {i}", flush=True, end="")
+    i+=1
 
     # current_frame = get_numpy_from_buffer(buffer, format, width, height)
     return Gst.PadProbeReturn.OK
@@ -50,14 +54,13 @@ class GStreamerInstanceSegmentationApp(GStreamerApp):
         self.network_height = 299
         self.network_format = "RGB"
     
-        self.default_postprocess_so = os.path.join(self.postprocess_dir, 'libyolov5seg_post.so')
+        self.default_postprocess_so = os.path.join(self.current_path, '../libinception_v3_inference.so')
 
         self.default_network_name = "inception_v3"
         self.hef_path = os.path.join(self.current_path, '../inception_v3.hef')
 
         self.app_callback = app_callback
         self.source_type = "rpi"
-        self.processing_path = os.path.join(self.current_path, "../libinception_v3_inference.so")
         setproctitle.setproctitle(" detection and tracking app")
 
         self.create_pipeline()
@@ -82,10 +85,8 @@ class GStreamerInstanceSegmentationApp(GStreamerApp):
         pipeline_string += "t. ! " + QUEUE("queue_hailonet")
         pipeline_string += "videoconvert n-threads=3 ! "
         
-        # Defining own postprocessing path                                                                                    self.processing_path
         pipeline_string += f"hailonet hef-path={self.hef_path} batch-size={self.batch_size} force-writable=true ! "
-        pipeline_string += f"hailofilter function-name=infer so-path={self.default_postprocess_so} qos=false ! "
-        #
+        pipeline_string += f'hailofilter function-name=infer so-path={self.default_postprocess_so} qos=false ! '
         
         pipeline_string += QUEUE("queue_hmuc") + " hmux.sink_1 "
         pipeline_string += "hmux. ! "

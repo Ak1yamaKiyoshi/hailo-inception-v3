@@ -1,6 +1,7 @@
 # Ignore zip files
 *.zip
 
+build/
 # Ignore log files
 *.log
 

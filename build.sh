@@ -1,36 +1,25 @@
 #!/bin/bash
 
-# Remove old build directory if it exists
-if [ -d "build" ]; then
-    rm -rf build
+# Set the project directory name
+PROJECT_DIR="."
+
+# Get the build mode from the command line (default to release)
+if [ "$1" = "debug" ]; then
+    BUILD_MODE="Debug"
+else
+    BUILD_MODE="Release"
 fi
 
-# Create new build directory
-mkdir build
-cd build
+# Create the build directory
+BUILD_DIR="$PROJECT_DIR/build.$BUILD_MODE"
+mkdir -p $BUILD_DIR
+cd $BUILD_DIR
 
-# Configure with CMake
-cmake ..
+# Configure the project with CMake
+cmake -DCMAKE_BUILD_TYPE=$BUILD_MODE ..
 
-# Build the project and show full output
-cmake --build . -- VERBOSE=1
-
-# Check if the build was successful
-if [ $? -ne 0 ]; then
-    echo "Build failed. Please check the error messages above."
-    exit 1
-fi
-
-# Copy the shared library and executable to the parent directory
-cp libinception_v3_inference.so ..
-cp inception_v3_inference ..
+# Compile the project
+make
 
 # Return to the original directory
 cd ..
-
-# Remove HailoRT log if it exists
-if [[ -f "hailort.log" ]]; then
-    rm hailort.log
-fi
-
-echo "Build complete. Shared library and executable are now in the current directory."

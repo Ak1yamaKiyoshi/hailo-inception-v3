@@ -1,0 +1,3 @@
+/home/star/hailo-inception-v3/build.Release/CMakeFiles/inception_v3_hailo.dir
+/home/star/hailo-inception-v3/build.Release/CMakeFiles/edit_cache.dir
+/home/star/hailo-inception-v3/build.Release/CMakeFiles/rebuild_cache.dir
